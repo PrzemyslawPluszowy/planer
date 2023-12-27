@@ -61,10 +61,14 @@ class Scheduler {
 
       if (delay > 0) {
         await Future.delayed(Duration(milliseconds: delay)).then((_) {
-          _handleScheduledRun(squad);
+          if (!_currentCompleter!.isCompleted) {
+            _handleScheduledRun(squad);
+          }
         });
       } else {
-        _handleScheduledRun(squad);
+        if (!_currentCompleter!.isCompleted) {
+          _handleScheduledRun(squad);
+        }
       }
       squad.nextRunTimeMilliseconds = now
           .add(Duration(
