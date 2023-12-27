@@ -56,7 +56,6 @@ class Scheduler {
       final squad = squads.first;
       final now = DateTime.now();
       final delay = squad.nextRunTimeMilliseconds! - now.millisecondsSinceEpoch;
-      Talker().warning('Squad ${squad.uid} will run in $delay milliseconds');
 
       if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
         _currentCompleter!.complete();
@@ -126,7 +125,7 @@ void main() async {
   await scheduler.add(squad3);
 
   Future.delayed(const Duration(seconds: 5), () async {
-    final squad4 = LawEnforcersSquad('squad4', 1);
+    final squad4 = LawEnforcersSquad('squad4', 5);
     await scheduler.add(squad4);
   });
 
