@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:talker/talker.dart';
+
 class LawEnforcersSquad {
   final String uid;
   DateTime lastUpdate;
@@ -44,7 +46,9 @@ class Scheduler {
   void remove(LawEnforcersSquad squad) {
     squads.removeWhere((element) => element.uid == squad.uid);
     _sortSquadsByNextRunTime();
-    _currentCompleter?.complete();
+    if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
+      _currentCompleter!.complete();
+    }
   }
 
   Future<void> _awaitScheduledRun() async {
@@ -106,9 +110,9 @@ class Scheduler {
 void main() async {
   final scheduler = Scheduler(
     (String uid) {
-      print('Squad $uid is ready for update');
+      Talker().warning('Squad $uid runned');
     },
-    const Duration(seconds: 10),
+    const Duration(seconds: 5),
   );
 
   final squad1 = LawEnforcersSquad('squad1', 3);
