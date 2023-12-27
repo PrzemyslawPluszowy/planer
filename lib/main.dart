@@ -40,7 +40,7 @@ class Scheduler {
 
     squads.add(squad);
     _sortSquadsByNextRunTime();
-    await _awaitScheduledRun();
+    _awaitScheduledRun();
   }
 
   void remove(LawEnforcersSquad squad) {
@@ -56,6 +56,7 @@ class Scheduler {
       final squad = squads.first;
       final now = DateTime.now();
       final delay = squad.nextRunTimeMilliseconds! - now.millisecondsSinceEpoch;
+      Talker().warning('Squad ${squad.uid} will run in $delay milliseconds');
 
       if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
         _currentCompleter!.complete();
