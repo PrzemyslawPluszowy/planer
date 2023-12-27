@@ -59,6 +59,11 @@ class Scheduler {
 
       if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
         _currentCompleter!.complete();
+        squad.nextRunTimeMilliseconds = now
+            .add(Duration(
+                milliseconds: squad.nextRunTimeMilliseconds! -
+                    now.millisecondsSinceEpoch))
+            .millisecondsSinceEpoch;
       }
 
       _currentCompleter = Completer<void>();
@@ -74,11 +79,7 @@ class Scheduler {
           _handleScheduledRun(squad);
         }
       }
-      squad.nextRunTimeMilliseconds = now
-          .add(Duration(
-              milliseconds:
-                  squad.nextRunTimeMilliseconds! - now.millisecondsSinceEpoch))
-          .millisecondsSinceEpoch;
+
       await _currentCompleter!.future;
     }
   }
