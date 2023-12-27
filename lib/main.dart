@@ -66,7 +66,11 @@ class Scheduler {
       } else {
         _handleScheduledRun(squad);
       }
-
+      squad.nextRunTimeMilliseconds = now
+          .add(Duration(
+              milliseconds:
+                  squad.nextRunTimeMilliseconds! - now.millisecondsSinceEpoch))
+          .millisecondsSinceEpoch;
       await _currentCompleter!.future;
     }
   }
