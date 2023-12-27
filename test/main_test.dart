@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:talker/talker.dart';
 import 'package:toster/main.dart';
 
 void main() {
@@ -41,7 +42,7 @@ void main() {
 
     await Future.delayed(const Duration(seconds: 10));
 
-    expect(scheduler.squads, isEmpty);
+    expect(true, scheduler.isEmpty);
   });
 
   test('Scheduler cancels  when no more squads to update', () async {
@@ -56,6 +57,28 @@ void main() {
 
     await Future.delayed(const Duration(seconds: 10));
 
-    expect(scheduler.squads, isEmpty);
+    expect(true, scheduler.isEmpty);
+  });
+
+  test('Two object', () async {
+    final scheduler = Scheduler(
+      (String uid) {
+        print('$uid, ${DateTime.now()}');
+      },
+      const Duration(seconds: 10),
+    );
+
+    final squad1 = LawEnforcersSquad('squad1', 4);
+    final squad2 = LawEnforcersSquad('squad2', 4);
+
+    await scheduler.add(squad1);
+    print('${DateTime.now()}');
+    await Future.delayed(const Duration(seconds: 2));
+    await scheduler.add(squad2);
+    scheduler.remove(squad1);
+    print('${DateTime.now()}');
+    await Future.delayed(const Duration(seconds: 30));
+
+    // expect(true, scheduler.isEmpty);
   });
 }

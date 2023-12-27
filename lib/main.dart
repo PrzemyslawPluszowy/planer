@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:talker/talker.dart';
 
@@ -6,7 +7,7 @@ class LawEnforcersSquad {
   final String uid;
   DateTime lastUpdate;
   int updatesLeft;
-  int? nextRunTimeMilliseconds;
+  DateTime? nextRunTime;
 
   LawEnforcersSquad(
     this.uid,
@@ -28,83 +29,67 @@ class LawEnforcersSquad {
 class Scheduler {
   final Duration updateInterval;
   final Function(String uid) run;
-  final List<LawEnforcersSquad> squads = [];
-  Completer<void>? _currentCompleter;
+  bool get isEmpty => _squads.isEmpty;
+  Future<void>? _future;
+  final SplayTreeSet<LawEnforcersSquad> _squads =
+      SplayTreeSet<LawEnforcersSquad>((a, b) {
+    return a.uid == b.uid ? 0 : a.nextRunTime!.compareTo(b.nextRunTime!);
+  });
 
   Scheduler(this.run, this.updateInterval);
 
   Future<void> add(LawEnforcersSquad squad) async {
-    final now = DateTime.now();
-    squad.nextRunTimeMilliseconds =
-        now.add(updateInterval).millisecondsSinceEpoch;
-
-    squads.add(squad);
-    _sortSquadsByNextRunTime();
-    _awaitScheduledRun();
+    final tmp = _squads.lookup(squad);
+    if (tmp != null) {
+      squad.nextRunTime = tmp.nextRunTime;
+      _squads.remove(tmp);
+    } else {
+      final now = DateTime.now();
+      squad.nextRunTime = now.add(updateInterval);
+    }
+    _squads.add(squad);
+    _scheduledRun();
   }
 
   void remove(LawEnforcersSquad squad) {
-    squads.removeWhere((element) => element.uid == squad.uid);
-    _sortSquadsByNextRunTime();
-    if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
-      _currentCompleter!.complete();
-    }
+    _squads.remove(squad);
   }
 
-  Future<void> _awaitScheduledRun() async {
-    while (squads.isNotEmpty) {
-      final squad = squads.first;
+  Future<void> _scheduledRun() async {
+    final firstSquad = _squads.firstOrNull;
+    if (firstSquad != null && _future == null) {
       final now = DateTime.now();
-      final delay = squad.nextRunTimeMilliseconds! - now.millisecondsSinceEpoch;
+      final nextRunTime = firstSquad.nextRunTime!;
+      final timeToNextRun = nextRunTime.difference(now);
+      _future = Future.delayed(timeToNextRun, _handleScheduledRun);
+    }
+  }
 
-      if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
-        _currentCompleter!.complete();
-        squad.nextRunTimeMilliseconds = now
-            .add(Duration(
-                milliseconds: squad.nextRunTimeMilliseconds! -
-                    now.millisecondsSinceEpoch))
-            .millisecondsSinceEpoch;
+  void _handleScheduledRun() {
+    _future = null;
+    final firstSquad = _squads.firstOrNull;
+    if (firstSquad != null) {
+      if (firstSquad.nextRunTime!.isAfter(DateTime.now())) {
+        print('wykonalo');
+        _scheduledRun();
+        return;
       }
+      if (firstSquad.updatesLeft > 0) {
+        run(firstSquad.uid);
+        firstSquad.lastUpdate = DateTime.now();
+        firstSquad.updatesLeft--;
+        _squads.remove(firstSquad);
 
-      _currentCompleter = Completer<void>();
-
-      if (delay > 0) {
-        await Future.delayed(Duration(milliseconds: delay)).then((_) {
-          if (!_currentCompleter!.isCompleted) {
-            _handleScheduledRun(squad);
-          }
-        });
-      } else {
-        if (!_currentCompleter!.isCompleted) {
-          _handleScheduledRun(squad);
+        if (firstSquad.updatesLeft > 0) {
+          add(firstSquad);
+        } else {
+          _scheduledRun();
         }
+      } else {
+        _squads.remove(firstSquad);
+        _scheduledRun();
       }
-
-      await _currentCompleter!.future;
     }
-  }
-
-  void _handleScheduledRun(LawEnforcersSquad squad) {
-    run(squad.uid);
-    squad.lastUpdate = DateTime.now();
-    squad.updatesLeft--;
-
-    if (squad.updatesLeft == 0) {
-      remove(squad);
-    } else {
-      squad.nextRunTimeMilliseconds =
-          squad.lastUpdate.add(updateInterval).millisecondsSinceEpoch;
-      _sortSquadsByNextRunTime();
-    }
-
-    if (!_currentCompleter!.isCompleted) {
-      _currentCompleter!.complete();
-    }
-  }
-
-  void _sortSquadsByNextRunTime() {
-    squads.sort((a, b) =>
-        a.nextRunTimeMilliseconds!.compareTo(b.nextRunTimeMilliseconds!));
   }
 }
 
