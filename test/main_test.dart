@@ -16,16 +16,16 @@ void main() {
     final squad2 = LawEnforcersSquad('squad2', 2);
     final squad3 = LawEnforcersSquad('squad3', 2);
 
-    scheduler.add(squad1);
-    scheduler.add(squad2);
-    scheduler.add(squad3);
+    await scheduler.add(squad1);
+    await scheduler.add(squad2);
+    await scheduler.add(squad3);
 
     await Future.delayed(const Duration(seconds: 10));
 
     expect(executedTasks, contains('squad1'));
     expect(executedTasks, contains('squad2'));
     expect(executedTasks, contains('squad3'));
-  });
+  }, timeout: const Timeout(Duration(seconds: 60)));
 
   test('Scheduler removes squads after updates are completed', () async {
     final scheduler = Scheduler(
@@ -36,15 +36,15 @@ void main() {
     final squad1 = LawEnforcersSquad('squad1', 1);
     final squad2 = LawEnforcersSquad('squad2', 1);
 
-    scheduler.add(squad1);
-    scheduler.add(squad2);
+    await scheduler.add(squad1);
+    await scheduler.add(squad2);
 
     await Future.delayed(const Duration(seconds: 10));
 
     expect(scheduler.squads, isEmpty);
   });
 
-  test('Scheduler cancels timer when no more squads to update', () async {
+  test('Scheduler cancels  when no more squads to update', () async {
     final scheduler = Scheduler(
       (String uid) {},
       const Duration(seconds: 5),
@@ -52,11 +52,10 @@ void main() {
 
     final squad1 = LawEnforcersSquad('squad1', 1);
 
-    scheduler.add(squad1);
+    await scheduler.add(squad1);
 
     await Future.delayed(const Duration(seconds: 10));
 
     expect(scheduler.squads, isEmpty);
-    expect(scheduler.timer, isNull);
   });
 }

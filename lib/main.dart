@@ -1,11 +1,10 @@
 import 'dart:async';
 
-import 'package:talker/talker.dart';
-
 class LawEnforcersSquad {
   final String uid;
   DateTime lastUpdate;
   int updatesLeft;
+  int? nextRunTimeMilliseconds;
 
   LawEnforcersSquad(
     this.uid,
@@ -28,80 +27,78 @@ class Scheduler {
   final Duration updateInterval;
   final Function(String uid) run;
   final List<LawEnforcersSquad> squads = [];
-  Timer? timer;
+  Completer<void>? _currentCompleter;
 
   Scheduler(this.run, this.updateInterval);
 
-  void add(LawEnforcersSquad squad) {
+  Future<void> add(LawEnforcersSquad squad) async {
+    final now = DateTime.now();
+    squad.nextRunTimeMilliseconds =
+        now.add(updateInterval).millisecondsSinceEpoch;
+
     squads.add(squad);
-    if (timer == null) {
-      _startTimer();
-    }
+    _sortSquadsByNextRunTime();
+    await _awaitScheduledRun();
   }
 
   void remove(LawEnforcersSquad squad) {
-    Talker().info('Removing squad ${squad.uid}');
     squads.removeWhere((element) => element.uid == squad.uid);
-    Talker().info('Squads dligos: ${squads.length}', 'Squads: $squads');
-
-    if (squads.isEmpty) {
-      _cancelTimer();
-    }
+    _sortSquadsByNextRunTime();
+    _currentCompleter?.complete();
   }
 
-  void _startTimer() {
-    timer = Timer.periodic(updateInterval, (Timer timer) {
-      _handleScheduledRuns();
-    });
-  }
+  Future<void> _awaitScheduledRun() async {
+    while (squads.isNotEmpty) {
+      final squad = squads.first;
+      final now = DateTime.now();
+      final delay = squad.nextRunTimeMilliseconds! - now.millisecondsSinceEpoch;
 
-  void _cancelTimer() {
-    Talker().info('Cancelling timer');
-    timer?.cancel();
-    timer = null;
-  }
-
-  void _handleScheduledRuns() {
-    final now = DateTime.now();
-    final squadsCopy = List<LawEnforcersSquad>.from(squads);
-
-    for (final squad in squadsCopy) {
-      final nextRunTime = squad.lastUpdate.add(updateInterval);
-
-      if (now.isAfter(nextRunTime) && squad.updatesLeft > 0) {
-        if (isReadyForUpdate(squad)) {
-          run(squad.uid);
-          squad.lastUpdate = now;
-          squad.updatesLeft--;
-          Talker()
-              .error('Squad ${squad.uid} updated, ${squad.updatesLeft} left');
-
-          if (squad.updatesLeft == 0) {
-            remove(squad);
-          }
-        }
+      if (_currentCompleter != null && !_currentCompleter!.isCompleted) {
+        _currentCompleter!.complete();
       }
-    }
 
-    Talker().warning('Squads dligos: ${squads.length}, ${squadsCopy.length}');
-    if (squads.isEmpty) {
-      Talker().good('No more squads to update');
-      _cancelTimer();
+      _currentCompleter = Completer<void>();
+
+      if (delay > 0) {
+        await Future.delayed(Duration(milliseconds: delay)).then((_) {
+          _handleScheduledRun(squad);
+        });
+      } else {
+        _handleScheduledRun(squad);
+      }
+
+      await _currentCompleter!.future;
     }
   }
 
-  bool isReadyForUpdate(LawEnforcersSquad squad) {
-    final now = DateTime.now();
-    final nextRunTime = squad.lastUpdate.add(updateInterval);
+  void _handleScheduledRun(LawEnforcersSquad squad) {
+    run(squad.uid);
+    squad.lastUpdate = DateTime.now();
+    squad.updatesLeft--;
 
-    return now.isAfter(nextRunTime);
+    if (squad.updatesLeft == 0) {
+      remove(squad);
+    } else {
+      squad.nextRunTimeMilliseconds =
+          squad.lastUpdate.add(updateInterval).millisecondsSinceEpoch;
+      _sortSquadsByNextRunTime();
+    }
+
+    if (!_currentCompleter!.isCompleted) {
+      _currentCompleter!.complete();
+    }
+  }
+
+  void _sortSquadsByNextRunTime() {
+    squads.sort((a, b) =>
+        a.nextRunTimeMilliseconds!.compareTo(b.nextRunTimeMilliseconds!));
   }
 }
 
 void main() async {
   final scheduler = Scheduler(
     (String uid) {
-      Talker().warning('Squad $uid is ready for update');
+      print('Squad $uid is ready for update');
     },
     const Duration(seconds: 10),
   );
@@ -109,12 +106,17 @@ void main() async {
   final squad1 = LawEnforcersSquad('squad1', 3);
   final squad2 = LawEnforcersSquad('squad2', 2);
   final squad3 = LawEnforcersSquad('squad3', 2);
-  scheduler.add(squad1);
-  scheduler.add(squad2);
-  scheduler.add(squad3);
 
-  Future.delayed(const Duration(seconds: 25), () {
-    Talker().error('Removing squad1');
+  await scheduler.add(squad1);
+  await scheduler.add(squad2);
+  await scheduler.add(squad3);
+
+  Future.delayed(const Duration(seconds: 5), () async {
+    final squad4 = LawEnforcersSquad('squad4', 1);
+    await scheduler.add(squad4);
+  });
+
+  await Future.delayed(const Duration(seconds: 25), () {
     scheduler.remove(squad1);
   });
 }
