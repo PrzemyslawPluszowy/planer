@@ -1,120 +1,181 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:io';
 
+import 'package:bson/bson.dart';
 import 'package:talker/talker.dart';
 
-class LawEnforcersSquad {
+class Task {
   final String uid;
-  DateTime lastUpdate;
-  int updatesLeft;
-  DateTime? nextRunTime;
 
-  LawEnforcersSquad(
-    this.uid,
-    this.updatesLeft,
-  ) : lastUpdate = DateTime.now();
+  final int updatesLeft;
+  final DateTime nextRunTime;
 
-  LawEnforcersSquad copyWith({
+  Task({
+    required this.uid,
+    required this.updatesLeft,
+    required this.nextRunTime,
+  });
+
+  Task copyWith({
     String? uid,
-    DateTime? lastUpdate,
     int? updatesLeft,
+    DateTime? nextRunTime,
   }) {
-    return LawEnforcersSquad(
-      uid ?? this.uid,
-      updatesLeft ?? this.updatesLeft,
+    return Task(
+      uid: uid ?? this.uid,
+      updatesLeft: updatesLeft ?? this.updatesLeft,
+      nextRunTime: nextRunTime ?? this.nextRunTime,
     );
   }
+
+  factory Task.fromBson(Map<String, dynamic> bson) {
+    return Task(
+      uid: bson['uid'] as String,
+      updatesLeft: bson['updatesLeft'] as int,
+      nextRunTime: bson['nextRunTime'] as DateTime,
+    );
+  }
+
+  Map<String, dynamic> toBson() => {
+        'uid': uid,
+        'updatesLeft': updatesLeft,
+        'nextRunTime': nextRunTime,
+      };
 }
 
 class Scheduler {
   final Duration updateInterval;
   final Function(String uid) run;
-  bool get isEmpty => _squads.isEmpty;
+  final String filePatch;
+  bool get isEmpty => _tasks.isEmpty;
   Future<void>? _future;
-  final SplayTreeSet<LawEnforcersSquad> _squads =
-      SplayTreeSet<LawEnforcersSquad>((a, b) {
-    return a.uid == b.uid ? 0 : a.nextRunTime!.compareTo(b.nextRunTime!);
+  final SplayTreeSet<Task> _tasks = SplayTreeSet<Task>((a, b) {
+    return a.uid == b.uid ? 0 : a.nextRunTime.compareTo(b.nextRunTime);
   });
 
-  Scheduler(this.run, this.updateInterval);
+  Scheduler(this.run, this.updateInterval, this.filePatch) {
+    if (File(filePatch).existsSync()) {
+      final readBackup = _readBackup(filePatch);
+      _tasks.addAll(readBackup);
+      _scheduledRun();
+    }
+  }
 
-  Future<void> add(LawEnforcersSquad squad) async {
-    final tmp = _squads.lookup(squad);
-    if (tmp != null) {
-      squad.nextRunTime = tmp.nextRunTime;
-      _squads.remove(tmp);
+  void add(String id, int updateLeft) {
+    Task? task = Task(uid: id, updatesLeft: 0, nextRunTime: DateTime.now());
+    task = _tasks.lookup(task);
+    if (task != null) {
+      // task.nextRunTime = tmp.nextRunTime;
+      _tasks.remove(task);
+      task = task.copyWith(updatesLeft: updateLeft);
     } else {
       final now = DateTime.now();
-      squad.nextRunTime = now.add(updateInterval);
+      task = Task(
+          uid: id,
+          updatesLeft: updateLeft,
+          nextRunTime: now.add(updateInterval));
     }
-    _squads.add(squad);
+    _tasks.add(task);
+    _createBackup();
+
     _scheduledRun();
   }
 
-  void remove(LawEnforcersSquad squad) {
-    _squads.remove(squad);
+  void remove(String id) {
+    Talker().warning('Scheduler remove $id');
+    _tasks.removeWhere((element) => element.uid == id);
+    _createBackup();
   }
 
   Future<void> _scheduledRun() async {
-    final firstSquad = _squads.firstOrNull;
-    if (firstSquad != null && _future == null) {
+    final firstTask = _tasks.firstOrNull;
+    Talker().warning('Scheduler _scheduledRun ${firstTask?.uid}');
+    if (firstTask != null && _future == null) {
       final now = DateTime.now();
-      final nextRunTime = firstSquad.nextRunTime!;
+      final nextRunTime = firstTask.nextRunTime;
       final timeToNextRun = nextRunTime.difference(now);
       _future = Future.delayed(timeToNextRun, _handleScheduledRun);
     }
   }
 
-  void _handleScheduledRun() {
+  Future<void> _handleScheduledRun() async {
+    Talker().good('Scheduler _handleScheduledRun');
     _future = null;
-    final firstSquad = _squads.firstOrNull;
-    if (firstSquad != null) {
-      if (firstSquad.nextRunTime!.isAfter(DateTime.now())) {
+    final firstTask = _tasks.firstOrNull;
+    if (firstTask != null) {
+      if (firstTask.nextRunTime.isAfter(DateTime.now())) {
         print('wykonalo');
         _scheduledRun();
         return;
       }
-      if (firstSquad.updatesLeft > 0) {
-        run(firstSquad.uid);
-        firstSquad.lastUpdate = DateTime.now();
-        firstSquad.updatesLeft--;
-        _squads.remove(firstSquad);
+      if (firstTask.updatesLeft > 0) {
+        run(firstTask.uid);
+        final tmp = firstTask.copyWith(
+          updatesLeft: firstTask.updatesLeft - 1,
+        );
 
-        if (firstSquad.updatesLeft > 0) {
-          add(firstSquad);
+        _tasks.remove(firstTask);
+
+        if (tmp.updatesLeft > 0) {
+          add(tmp.uid, tmp.updatesLeft);
         } else {
           _scheduledRun();
         }
       } else {
-        _squads.remove(firstSquad);
+        _tasks.remove(firstTask);
         _scheduledRun();
       }
     }
+    _createBackup();
+  }
+
+  void _createBackup() {
+    Talker().warning('Scheduler _createBackup ${_tasks.length}');
+    try {
+      final file = File(filePatch);
+      var docToSave = <String, dynamic>{
+        'list': _tasks.map((e) => e.toBson()).toList()
+      };
+      var bsonBinary = BsonCodec.serialize(docToSave);
+      file.writeAsBytesSync(bsonBinary.byteList);
+
+      Talker().good('succ', docToSave);
+    } catch (e) {
+      Talker().error('err: $e');
+    }
+  }
+
+  List<Task> _readBackup(String path) {
+    final file = File(path);
+    final bsonBinary = file.readAsBytesSync();
+    final doc = BsonCodec.deserialize(BsonBinary.from(bsonBinary));
+    final list = doc['list'] as List;
+
+    final tasks = list.map((e) {
+      print((e['lastUpdate'].runtimeType));
+      return Task.fromBson(e);
+    }).toList();
+    return tasks;
   }
 }
 
 void main() async {
   final scheduler = Scheduler(
-    (String uid) {
-      Talker().warning('Squad $uid runned');
-    },
-    const Duration(seconds: 5),
-  );
+      // filePatch: '../backup/tasks.bson',
+      (String uid) {
+    Talker().warning('Squad $uid runned');
+  }, const Duration(seconds: 5));
 
-  final squad1 = LawEnforcersSquad('squad1', 3);
-  final squad2 = LawEnforcersSquad('squad2', 2);
-  final squad3 = LawEnforcersSquad('squad3', 2);
+  // scheduler.add('squad1', 3);
+  // scheduler.add('squad2', 2);
+  // scheduler.add('squad3', 2);
 
-  await scheduler.add(squad1);
-  await scheduler.add(squad2);
-  await scheduler.add(squad3);
+  // Future.delayed(const Duration(seconds: 5), () async {
+  //   scheduler.add('squad4', 5);
+  // });
 
-  Future.delayed(const Duration(seconds: 5), () async {
-    final squad4 = LawEnforcersSquad('squad4', 5);
-    await scheduler.add(squad4);
-  });
-
-  await Future.delayed(const Duration(seconds: 25), () {
-    scheduler.remove(squad1);
-  });
+  // await Future.delayed(const Duration(seconds: 25), () {
+  //   scheduler.remove('squad1');
+  // });
 }

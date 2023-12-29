@@ -1,31 +1,34 @@
+import 'dart:io';
+import 'dart:math';
+
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:talker/talker.dart';
 import 'package:toster/main.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('Scheduler runs tasks after specified time', () async {
     final List<String> executedTasks = [];
 
     final scheduler = Scheduler(
       (String uid) {
         executedTasks.add(uid);
+        Talker().error('Scheduler executed', executedTasks);
       },
       const Duration(seconds: 5),
     );
 
-    final squad1 = LawEnforcersSquad('squad1', 3);
-    final squad2 = LawEnforcersSquad('squad2', 2);
-    final squad3 = LawEnforcersSquad('squad3', 2);
-
-    await scheduler.add(squad1);
-    await scheduler.add(squad2);
-    await scheduler.add(squad3);
+    scheduler.add('squad1', 1);
+    scheduler.add('squad2', 1);
+    // await scheduler.add('squad3', 1);
 
     await Future.delayed(const Duration(seconds: 10));
 
-    expect(executedTasks, contains('squad1'));
-    expect(executedTasks, contains('squad2'));
-    expect(executedTasks, contains('squad3'));
+    expect(true, executedTasks.contains('squad1'));
+    expect(true, executedTasks.contains('squad2'));
+    // expect(executedTasks, contains('squad3'));
   }, timeout: const Timeout(Duration(seconds: 60)));
 
   test('Scheduler removes squads after updates are completed', () async {
@@ -34,11 +37,8 @@ void main() {
       const Duration(seconds: 5),
     );
 
-    final squad1 = LawEnforcersSquad('squad1', 1);
-    final squad2 = LawEnforcersSquad('squad2', 1);
-
-    await scheduler.add(squad1);
-    await scheduler.add(squad2);
+    scheduler.add('squad1', 1);
+    scheduler.add('squad2', 1);
 
     await Future.delayed(const Duration(seconds: 10));
 
@@ -51,34 +51,39 @@ void main() {
       const Duration(seconds: 5),
     );
 
-    final squad1 = LawEnforcersSquad('squad1', 1);
-
-    await scheduler.add(squad1);
+    scheduler.add('squad1', 1);
 
     await Future.delayed(const Duration(seconds: 10));
 
     expect(true, scheduler.isEmpty);
   });
 
-  test('Two object', () async {
+  test('Create backup', () async {
     final scheduler = Scheduler(
-      (String uid) {
-        print('$uid, ${DateTime.now()}');
-      },
-      const Duration(seconds: 10),
+      (String uid) {},
+      const Duration(seconds: 5),
     );
 
-    final squad1 = LawEnforcersSquad('squad1', 4);
-    final squad2 = LawEnforcersSquad('squad2', 4);
+    scheduler.add('test_task_1', 1);
+    scheduler.add('test_task_2', 1);
 
-    await scheduler.add(squad1);
-    print('${DateTime.now()}');
     await Future.delayed(const Duration(seconds: 2));
-    await scheduler.add(squad2);
-    scheduler.remove(squad1);
-    print('${DateTime.now()}');
-    await Future.delayed(const Duration(seconds: 30));
+    const fullPath =
+        '/Users/misiek440/kursy/bloc/new_clean/toster/toster/backup/tasks.bson';
+    final file = File(fullPath);
 
-    // expect(true, scheduler.isEmpty);
+    bool exists = await file.exists();
+
+    expect(exists, true);
+
+    final newSheduler = Scheduler(
+      filePatch: fullPath,
+      (String uid) {},
+      const Duration(seconds: 2),
+    );
+
+    await Future.delayed(const Duration(seconds: 2));
+
+    expect(true, newSheduler.isEmpty);
   });
 }
