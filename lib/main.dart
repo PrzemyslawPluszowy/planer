@@ -162,10 +162,12 @@ class Scheduler {
 
 void main() async {
   final scheduler = Scheduler(
-      // filePatch: '../backup/tasks.bson',
-      (String uid) {
-    Talker().warning('Squad $uid runned');
-  }, const Duration(seconds: 5));
+    (String uid) {
+      Talker().warning('Squad $uid runned');
+    },
+    const Duration(seconds: 5),
+    '../backup/tasks.bson',
+  );
 
   // scheduler.add('squad1', 3);
   // scheduler.add('squad2', 2);

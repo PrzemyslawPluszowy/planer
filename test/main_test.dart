@@ -12,13 +12,11 @@ void main() {
   test('Scheduler runs tasks after specified time', () async {
     final List<String> executedTasks = [];
 
-    final scheduler = Scheduler(
-      (String uid) {
-        executedTasks.add(uid);
-        Talker().error('Scheduler executed', executedTasks);
-      },
-      const Duration(seconds: 5),
-    );
+    final scheduler = Scheduler((String uid) {
+      executedTasks.add(uid);
+      Talker().error('Scheduler executed', executedTasks);
+    }, const Duration(seconds: 5),
+        '/Users/misiek440/kursy/bloc/new_clean/toster/toster/backup/tasks.bson');
 
     scheduler.add('squad1', 1);
     scheduler.add('squad2', 1);
@@ -32,10 +30,8 @@ void main() {
   }, timeout: const Timeout(Duration(seconds: 60)));
 
   test('Scheduler removes squads after updates are completed', () async {
-    final scheduler = Scheduler(
-      (String uid) {},
-      const Duration(seconds: 5),
-    );
+    final scheduler = Scheduler((String uid) {}, const Duration(seconds: 5),
+        '/Users/misiek440/kursy/bloc/new_clean/toster/toster/backup/tasks.bson');
 
     scheduler.add('squad1', 1);
     scheduler.add('squad2', 1);
@@ -48,7 +44,10 @@ void main() {
   test('Scheduler cancels  when no more squads to update', () async {
     final scheduler = Scheduler(
       (String uid) {},
-      const Duration(seconds: 5),
+      const Duration(
+        seconds: 5,
+      ),
+      '/Users/misiek440/kursy/bloc/new_clean/toster/toster/backup/tasks.bson',
     );
 
     scheduler.add('squad1', 1);
@@ -59,10 +58,8 @@ void main() {
   });
 
   test('Create backup', () async {
-    final scheduler = Scheduler(
-      (String uid) {},
-      const Duration(seconds: 5),
-    );
+    final scheduler = Scheduler((String uid) {}, const Duration(seconds: 5),
+        '/Users/misiek440/kursy/bloc/new_clean/toster/toster/backup/tasks.bson');
 
     scheduler.add('test_task_1', 1);
     scheduler.add('test_task_2', 1);
@@ -76,11 +73,8 @@ void main() {
 
     expect(exists, true);
 
-    final newSheduler = Scheduler(
-      filePatch: fullPath,
-      (String uid) {},
-      const Duration(seconds: 2),
-    );
+    final newSheduler = Scheduler((String uid) {}, const Duration(seconds: 2),
+        '/Users/misiek440/kursy/bloc/new_clean/toster/toster/backup/tasks.bson');
 
     await Future.delayed(const Duration(seconds: 2));
 
